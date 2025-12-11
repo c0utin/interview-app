@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Any
 
 from flask import Flask, jsonify, request
-from sympy import Eq, solve, sympify
+from sympy import Eq, latex, solve, sympify
 from sympy.core.symbol import Symbol
 from sympy.parsing.sympy_parser import (
     implicit_multiplication_application,
@@ -35,9 +35,7 @@ def parse_equation(equation_str: str) -> tuple[Any, frozenset[Symbol]]:
 @lru_cache(maxsize=128)
 def _solve_cached(
     equation_str: str,
-) -> str:
-    """Internal cached solver for immutable inputs."""
-    # Check if equation contains '=' (is an equation)
+) -> tuple[str, str | None]:
     if "=" in equation_str:
         left, right = equation_str.split("=", 1)
         left_expr, left_symbols = parse_equation(left.strip())
@@ -45,43 +43,43 @@ def _solve_cached(
         expr = Eq(left_expr, right_expr)
         free_symbols = left_symbols | right_symbols
     else:
-        # Treat as expression to solve for 0
         expr, free_symbols = parse_equation(equation_str)
 
     if not free_symbols:
-        # No variables, just evaluate - fast path
         result = sympify(expr)
-        return f"result:{result}"
+        result_str = str(result)
+        return result_str, latex(result)
 
-    # Solve for the first variable (or all if multiple)
     symbols_list = sorted(free_symbols, key=lambda s: str(s))
     variable = symbols_list[0] if len(symbols_list) == 1 else None
 
     if variable:
         solutions = solve(expr, variable, dict=False)
         if not solutions:
-            return "result:No solution found"
+            return "No solution found", None
         if isinstance(solutions, list):
             formatted = ", ".join(str(sol) for sol in solutions)
-            return f"result:{variable} = {formatted}"
-        return f"result:{variable} = {solutions}"
+            latex_sols = ", ".join(latex(sol) for sol in solutions)
+            latex_result = f"{latex(variable)} = {latex_sols}"
+            return f"{variable} = {formatted}", latex_result
+        latex_result = f"{latex(variable)} = {latex(solutions)}"
+        return f"{variable} = {solutions}", latex_result
     else:
-        # Multiple variables
         solutions = solve(expr, free_symbols, dict=True)
         if not solutions:
-            return "result:No solution found"
-        return f"result:{solutions}"
+            return "No solution found", None
+        return f"{solutions}", latex(solutions)
 
 
 def solve_equation(
     equation_str: str,
 ) -> dict[str, str | list[str]]:
-    """Solve equation and return result or error."""
     try:
-        result = _solve_cached(equation_str)
-        if result.startswith("result:"):
-            return {"result": result[7:]}
-        return {"error": result}
+        result_text, result_latex = _solve_cached(equation_str)
+        return {
+            "result": result_text,
+            "latex": result_latex or result_text,
+        }
     except (ValueError, SyntaxError, TypeError) as e:
         return {"error": f"Invalid equation format: {str(e)}"}
     except Exception as e:

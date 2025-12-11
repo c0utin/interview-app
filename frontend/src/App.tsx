@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from 'react';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 
 const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) || 'http://localhost:8000';
@@ -6,6 +8,7 @@ const API_BASE_URL =
 function App() {
   const [equation, setEquation] = useState<string>('');
   const [result, setResult] = useState<string>('');
+  const [latex, setLatex] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -15,21 +18,24 @@ function App() {
     if (!trimmedEquation) {
       setError('Please enter an equation.');
       setResult('');
+      setLatex('');
       return;
     }
 
     setLoading(true);
     setError('');
     setResult('');
+    setLatex('');
     try {
       const response = await fetch(
         `${API_BASE_URL}/solve?equation=${encodeURIComponent(trimmedEquation)}`,
       );
-      const data: { result?: string; error?: string } = await response.json();
+      const data: { result?: string; latex?: string; error?: string } = await response.json();
       if (!response.ok) {
         throw new Error(data?.error || 'Request failed');
       }
       setResult(data.result || '');
+      setLatex(data.latex || '');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Request failed';
       setError(message);
@@ -69,7 +75,13 @@ function App() {
       </form>
 
       <div className="mt-4 min-h-[48px] rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-        {result && <p className="m-0 text-sm font-semibold text-emerald-700">{result}</p>}
+        {latex && (
+          <div
+            className="m-0 text-sm font-semibold text-emerald-700"
+            dangerouslySetInnerHTML={{ __html: katex.renderToString(latex) }}
+          />
+        )}
+        {result && !latex && <p className="m-0 text-sm font-semibold text-emerald-700">{result}</p>}
         {error && <p className="m-0 text-sm font-semibold text-red-700">{error}</p>}
         {!result && !error && <p className="m-0 text-sm text-slate-600">No response yet.</p>}
       </div>
